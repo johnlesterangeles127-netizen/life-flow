@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LifeFlow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+  <!-- LOADING -->
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <span>Loading LifeFlow…</span>
+  </div>
+
+  <!-- AUTH -->
+  <div id="auth-screen" style="display:none">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <div class="auth-logo-dot"></div>
+        <h1>LifeFlow</h1>
+      </div>
+      <p class="auth-subtitle">Your personal lifestyle tracker</p>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login" onclick="switchTab('login')">Sign in</button>
+        <button class="auth-tab" id="tab-signup" onclick="switchTab('signup')">Create account</button>
+      </div>
+      <div class="auth-field">
+        <label>Email</label>
+        <input type="email" id="auth-email" placeholder="you@email.com" autocomplete="email">
+      </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password">
+      </div>
+      <p id="auth-error" class="auth-error"></p>
+      <button class="auth-btn" id="auth-submit" onclick="submitAuth()">Sign in</button>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app-shell" style="display:none">
+    <div id="topbar">
+      <div class="topbar-left">
+        <div class="logo" id="logo-home" style="cursor:pointer">
+          <div class="logo-icon"></div> LifeFlow
+        </div>
+        <nav class="topbar-nav">
+          <a href="#" class="nav-link active" data-view="dashboard">Dashboard</a>
+          <a href="#" class="nav-link" data-view="tasks">Tasks</a>
+          <a href="#" class="nav-link" data-view="expenses">Expenses</a>
+          <a href="#" class="nav-link" data-view="budget">Budget &amp; Savings</a>
+        </nav>
+      </div>
+      <div class="topbar-actions">
+        <span id="topbar-date"></span>
+        <button class="pill-btn primary" id="btn-add-task"><i class="ti ti-plus"></i> New Task</button>
+        <button class="pill-btn cyan" id="btn-add-expense">Log Expense</button>
+      </div>
+    </div>
+
+    <div id="layout">
+
+      <!-- MAIN -->
+      <div id="main">
+        <!-- DASHBOARD VIEW -->
+        <div id="view-dashboard" style="display:none">
+          <div id="dashboard-container">
+            <!-- Top stat cards -->
+            <div id="expense-summary" class="dashboard-summary">
+              <div class="summary-card glass-card">
+                <div class="summary-icon purple"><i class="ti ti-clipboard-check"></i></div>
+                <div class="summary-info">
+                  <div class="summary-lbl">Tasks Done Today:</div>
+                  <div class="summary-num" id="dash-tasks-done">0</div>
+                </div>
+              </div>
+              <div class="summary-card glass-card">
+                <div class="summary-icon gray"><i class="ti ti-clock"></i></div>
+                <div class="summary-info">
+                  <div class="summary-lbl">Pending Tasks:</div>
+                  <div class="summary-num" id="dash-tasks-pending">0</div>
+                </div>
+              </div>
+              <div class="summary-card glass-card">
+                <div class="summary-icon cyan"><i class="ti ti-wallet"></i></div>
+                <div class="summary-info">
+                  <div class="summary-lbl">Today's Spend:</div>
+                  <div class="summary-num expense-stat" id="dash-spent-today">₱0.00</div>
+                </div>
+              </div>
+              <div class="summary-card glass-card">
+                <div class="summary-info full-width">
+                  <div class="summary-lbl">Budget Left (Cycle):</div>
+                  <div class="summary-num" id="dash-budget-remaining">₱0.00</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="dashboard-grid">
+              <!-- Left Column: Recent Activity -->
+              <div class="dashboard-col left-col">
+                <div class="glass-panel">
+                  <h3 class="panel-title">Recent Activity</h3>
+                  <div class="recent-activity-list" id="recent-activity-list">
+                    <!-- Populated by JS -->
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Right Column: Charts -->
+              <div class="dashboard-col right-col">
+                <div class="glass-panel chart-panel">
+                  <h3 class="panel-title">What To Do Next</h3>
+                  <div class="remaining-tasks-list" id="remaining-tasks-list">
+                    <!-- Populated by JS -->
+                  </div>
+                </div>
+                <div class="glass-panel chart-panel">
+                  <h3 class="panel-title">Weekly Expenses</h3>
+                  <div class="chart-container">
+                    <canvas id="spending-trends-chart"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TASKS VIEW -->
+        <div id="view-tasks">
+          <div class="glass-panel tasks-panel">
+            <div class="tasks-panel-header">
+              <div class="task-filter-tabs" id="task-filter-tabs">
+                <button class="task-filter-tab active" data-filter="pending">Remaining</button>
+                <button class="task-filter-tab" data-filter="done">Finished</button>
+                <button class="task-filter-tab" data-filter="all">All</button>
+              </div>
+              <select class="sort-select" id="sort-select">
+                <option value="due">Sort: due date</option>
+                <option value="priority">Sort: priority</option>
+                <option value="created">Sort: created</option>
+              </select>
+              <button class="pill-btn primary" id="btn-add-task-inline"><i class="ti ti-plus"></i> New Task</button>
+            </div>
+            <div id="task-list"></div>
+          </div>
+        </div>
+
+        <!-- EXPENSES VIEW -->
+        <div id="view-expenses" style="display:none">
+          <!-- Summary cards -->
+          <div id="expense-summary" class="dashboard-summary">
+            <div class="summary-card glass-card">
+              <div class="summary-icon cyan"><i class="ti ti-calendar-week"></i></div>
+              <div class="summary-info">
+                <div class="summary-lbl">Today's Spend:</div>
+                <div class="summary-num" id="sum-today">₱0</div>
+              </div>
+            </div>
+            <div class="summary-card glass-card">
+              <div class="summary-icon purple"><i class="ti ti-calendar-month"></i></div>
+              <div class="summary-info">
+                <div class="summary-lbl">This Month:</div>
+                <div class="summary-num" id="sum-month">₱0</div>
+              </div>
+            </div>
+            <div class="summary-card glass-card">
+              <div class="summary-icon cyan"><i class="ti ti-trending-up"></i></div>
+              <div class="summary-info">
+                <div class="summary-lbl">Top Category:</div>
+                <div class="summary-num" id="sum-top-cat">—</div>
+              </div>
+            </div>
+            <div class="summary-card glass-card">
+              <div class="summary-icon purple"><i class="ti ti-list-numbers"></i></div>
+              <div class="summary-info">
+                <div class="summary-lbl">Transactions:</div>
+                <div class="summary-num" id="sum-count">0</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Budget by Category -->
+          <div class="glass-panel" style="margin-top:24px">
+            <h3 class="panel-title">Budget by Category</h3>
+            <div id="cat-breakdown"></div>
+          </div>
+
+          <!-- Expense list header -->
+          <div id="expense-header" style="margin-top:24px">
+            <h2 id="expense-view-title">All expenses</h2>
+            <div class="expense-header-right">
+              <button class="pill-btn cyan" id="btn-add-expense-inline"><i class="ti ti-plus"></i> Add expense</button>
+              <select class="sort-select" id="expense-month-filter">
+                <!-- filled by JS -->
+              </select>
+            </div>
+          </div>
+
+          <!-- Quick add presets -->
+          <div id="preset-row">
+            <div id="preset-chips"><!-- filled by JS --></div>
+            <button class="preset-manage-btn" id="btn-manage-presets"><i class="ti ti-adjustments-horizontal"></i> Manage</button>
+          </div>
+
+          <!-- Expense list -->
+          <div id="expense-list"></div>
+        </div>
+
+        <!-- BUDGET VIEW -->
+        <div id="view-budget" style="display:none">
+          <!-- Budget vs spending graph -->
+          <div class="glass-panel">
+            <div class="budget-graph-header">
+              <h3>Budget vs Spending</h3>
+              <div class="expense-header-right">
+                <select class="sort-select" id="budget-period-select">
+                  <!-- filled by JS -->
+                </select>
+                <button class="pill-btn primary" id="btn-add-budget"><i class="ti ti-plus"></i> Set allotted budget</button>
+              </div>
+            </div>
+            <div class="budget-graph-bars">
+              <div class="budget-graph-row">
+                <span class="budget-graph-row-label">Allotted</span>
+                <div class="budget-graph-bar bg-allotted">
+                  <div class="budget-graph-bar-fill" id="graph-allotted"></div>
+                </div>
+                <span class="budget-graph-row-value" id="graph-allotted-val">₱0</span>
+              </div>
+              <div class="budget-graph-row">
+                <span class="budget-graph-row-label">Spent</span>
+                <div class="budget-graph-bar bg-spent">
+                  <div class="budget-graph-bar-fill" id="graph-spent"></div>
+                </div>
+                <span class="budget-graph-row-value" id="graph-spent-val">₱0</span>
+              </div>
+              <div class="budget-graph-row">
+                <span class="budget-graph-row-label">Savings</span>
+                <div class="budget-graph-bar bg-saved">
+                  <div class="budget-graph-bar-fill" id="graph-saved"></div>
+                </div>
+                <span class="budget-graph-row-value" id="graph-saved-val">₱0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Summary cards -->
+          <div id="budget-summary" class="dashboard-summary" style="margin-top:24px">
+            <div class="summary-card glass-card">
+              <div class="summary-icon purple"><i class="ti ti-calendar-time"></i></div>
+              <div class="summary-info">
+                <div class="summary-lbl">Current cycle:</div>
+                <div class="summary-num" id="budget-period-label">—</div>
+              </div>
+            </div>
+            <div class="summary-card glass-card">
+              <div class="summary-icon cyan"><i class="ti ti-wallet"></i></div>
+              <div class="summary-info">
+                <div class="summary-lbl">Total allotted:</div>
+                <div class="summary-num" id="budget-total-allotted">₱0</div>
+              </div>
+            </div>
+            <div class="summary-card glass-card">
+              <div class="summary-icon purple"><i class="ti ti-receipt"></i></div>
+              <div class="summary-info">
+                <div class="summary-lbl">Total spent:</div>
+                <div class="summary-num expense-stat" id="budget-total-spent">₱0</div>
+              </div>
+            </div>
+            <div class="summary-card glass-card">
+              <div class="summary-icon gray"><i class="ti ti-piggy-bank"></i></div>
+              <div class="summary-info">
+                <div class="summary-lbl">Savings this cycle:</div>
+                <div class="summary-num" id="budget-total-savings">₱0</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category Budgets -->
+          <div class="glass-panel" style="margin-top:24px">
+            <h3 class="panel-title">Category Budgets</h3>
+            <div id="budget-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TASK MODAL -->
+    <div id="modal" style="display:none" class="modal-overlay">
+      <div class="modal">
+        <h4 id="modal-title">New task</h4>
+        <div class="form-group">
+          <label>Task title *</label>
+          <input id="m-title" placeholder="What needs to be done?">
+        </div>
+        <div class="form-group">
+          <label>Notes / details</label>
+          <textarea id="m-notes" placeholder="Context, links, subtasks…"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Priority</label>
+            <select id="m-priority">
+              <option value="high">🔴 High</option>
+              <option value="medium" selected>🟡 Medium</option>
+              <option value="low">🟢 Low</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Starts</label>
+          <input type="datetime-local" id="m-start" style="width:100%">
+        </div>
+        <div class="form-group">
+          <label>Ends / due</label>
+          <input type="datetime-local" id="m-end" style="width:100%">
+        </div>
+        <div class="modal-btns">
+          <button class="btn-cancel" id="btn-cancel">Cancel</button>
+          <button class="btn-save" id="btn-save">Save task</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPENSE MODAL -->
+    <div id="expense-modal" style="display:none" class="modal-overlay">
+      <div class="modal">
+        <h4 id="expense-modal-title">Log expense</h4>
+        <div class="form-group">
+          <label>Description *</label>
+          <input id="e-desc" placeholder="What did you spend on?">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Amount (₱) *</label>
+            <input id="e-amount" type="number" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="e-date">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <select id="e-category">
+              <option value="food">🍔 Food & drinks</option>
+              <option value="transport">🚗 Transport</option>
+              <option value="shopping">🛍️ Shopping</option>
+              <option value="health">❤️ Health</option>
+              <option value="bills">📄 Bills</option>
+              <option value="other">📦 Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Payment</label>
+            <select id="e-payment">
+              <option value="cash">💵 Cash</option>
+              <option value="gcash">📱 GCash</option>
+              <option value="card">💳 Card</option>
+              <option value="bank">🏦 Bank transfer</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <input id="e-notes" placeholder="Optional note…">
+        </div>
+        <div class="modal-btns">
+          <button class="btn-cancel" id="e-btn-cancel">Cancel</button>
+          <button class="btn-save" id="e-btn-save">Save expense</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- BUDGET MODAL -->
+    <div id="budget-modal" style="display:none" class="modal-overlay">
+      <div class="modal">
+        <h4 id="budget-modal-title">Set allotted budget</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <select id="bu-category">
+              <option value="all">🔁 All categories</option>
+              <option value="food">🍔 Food & drinks</option>
+              <option value="transport">🚗 Transport</option>
+              <option value="shopping">🛍️ Shopping</option>
+              <option value="health">❤️ Health</option>
+              <option value="bills">📄 Bills</option>
+              <option value="other">📦 Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Allotted amount (₱) *</label>
+            <input id="bu-amount" type="number" min="0" step="0.01" placeholder="0.00">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Cycle</label>
+          <select id="bu-period">
+            <!-- filled by JS: current + upcoming month/period pairs -->
+          </select>
+        </div>
+        <p class="auth-subtitle" style="margin:4px 0 0">Every 2 weeks: 1st–15th, and 16th to end of month.</p>
+        <div class="modal-btns">
+          <button class="btn-cancel" id="bu-btn-cancel">Cancel</button>
+          <button class="btn-save" id="bu-btn-save">Save budget</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRESET MODAL -->
+    <div id="preset-modal" style="display:none" class="modal-overlay">
+      <div class="modal">
+        <h4>Quick-add presets</h4>
+        <div id="preset-manage-list"><!-- filled by JS --></div>
+
+        <h4 id="preset-form-title" style="font-size:14px;margin-top:16px">Add new preset</h4>
+        <div class="form-group">
+          <label>Label *</label>
+          <input id="pr-label" placeholder="e.g. Jeepney fare">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Amount (₱) *</label>
+            <input id="pr-amount" type="number" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select id="pr-category">
+              <option value="transport" selected>🚗 Transport</option>
+              <option value="food">🍔 Food & drinks</option>
+              <option value="shopping">🛍️ Shopping</option>
+              <option value="health">❤️ Health</option>
+              <option value="bills">📄 Bills</option>
+              <option value="other">📦 Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Payment</label>
+          <select id="pr-payment">
+            <option value="cash" selected>💵 Cash</option>
+            <option value="gcash">📱 GCash</option>
+            <option value="card">💳 Card</option>
+            <option value="bank">🏦 Bank transfer</option>
+          </select>
+        </div>
+        <div class="modal-btns">
+          <button class="btn-cancel" id="pr-btn-cancel">Close</button>
+          <button class="btn-save" id="pr-btn-save">Add preset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FLOATING AI ASSISTANT -->
+    <button id="ai-fab" title="AI Assistant"><i class="ti ti-sparkles"></i></button>
+
+    <div id="chat-popup">
+      <div id="chat-header">
+        <div class="ai-dot"></div>
+        <h3>LifeFlow AI Assistant</h3>
+        <button class="icon-btn" id="btn-close-chat"><i class="ti ti-x"></i></button>
+      </div>
+      <div id="chat-msgs">
+        <div class="msg ai">Hi! Ask me anything about your tasks, spending, or budget.</div>
+      </div>
+      <div class="chip-row">
+        <span class="chip" data-prompt="What should I focus on today?">Today's focus</span>
+        <span class="chip" data-prompt="How much have I spent this month and on what?">Monthly spend</span>
+        <span class="chip" data-prompt="Am I overspending on anything?">Overspending?</span>
+        <span class="chip" data-prompt="What are my overdue tasks?">Overdue tasks</span>
+      </div>
+      <div id="chat-input-area">
+        <input id="chat-input" placeholder="Ask about tasks or expenses…">
+        <button id="send-btn"><i class="ti ti-send"></i></button>
+      </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <!-- SCRIPTS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/tasks.js"></script>
+    <script src="js/Expenses.js"></script>
+    <script src="js/Budget.js"></script>
+    <script src="js/Presets.js"></script>
+    <script src="js/ai.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
