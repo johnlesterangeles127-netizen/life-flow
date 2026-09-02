@@ -1845,7 +1845,14 @@ const UI = (() => {
     // Sign out - only bind if element exists
     const logoutBtn = document.getElementById('btn-logout');
     if (logoutBtn) {
-      logoutBtn.addEventListener('click', async () => { await Auth.signOut(); });
+      logoutBtn.addEventListener('click', async () => {
+        try {
+          await Auth.signOut();
+          showToast('Signed out successfully');
+        } catch (err) {
+          showToast('Failed to sign out: ' + err.message, true);
+        }
+      });
     }
 
     document.addEventListener('keydown', e => {

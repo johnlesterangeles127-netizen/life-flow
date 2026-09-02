@@ -50,9 +50,17 @@ Auth.onAuthChange(async user => {
   if (user) {
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app-shell').style.display   = 'flex';
+    const emailEl = document.getElementById('user-email-display');
+    if (emailEl) {
+      emailEl.textContent = user.email || '';
+    }
     await UI.init();
   } else {
     document.getElementById('auth-screen').style.display = 'flex';
     document.getElementById('app-shell').style.display   = 'none';
+    const passEl = document.getElementById('auth-password');
+    if (passEl) passEl.value = '';
+    const errEl = document.getElementById('auth-error');
+    if (errEl) errEl.textContent = '';
   }
 });
