@@ -10,6 +10,12 @@ const UI = (() => {
   let presets = [];
   let taskFilter = 'all';
   let expenseCatFilter = 'all';
+  let expenseViewMode = 'calendar';
+  let calCurrentDate = new Date();
+  let activeDetailDate = null;
+  let taskViewMode = 'calendar';
+  let taskCalCurrentDate = new Date();
+  let activeTaskDetailDate = null;
   let currentView = 'dashboard'; // Default landing view is dashboard
   let editTaskId = null;
   let editExpenseId = null;
@@ -311,13 +317,149 @@ const UI = (() => {
   // ---- Task Rendering ----
 
   function renderTasks() {
-    const sort = document.getElementById('sort-select').value;
-    const PORDER = { high: 0, medium: 1, low: 2 };
-    let list = getFilteredTasks();
-
     document.querySelectorAll('#task-filter-tabs .task-filter-tab').forEach(tab => {
       tab.classList.toggle('active', tab.dataset.filter === taskFilter);
     });
+
+    const calViewEl = document.getElementById('task-calendar-view');
+    const listViewEl = document.getElementById('task-list');
+    document.querySelectorAll('#task-view-mode-tabs .view-toggle-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.mode === taskViewMode);
+    });
+
+    if (taskViewMode === 'calendar') {
+      if (calViewEl) calViewEl.style.display = 'block';
+      if (listViewEl) listViewEl.style.display = 'none';
+      renderTaskCalendar();
+    } else {
+      if (calViewEl) calViewEl.style.display = 'none';
+      if (listViewEl) listViewEl.style.display = 'block';
+      renderTaskList();
+    }
+
+    if (activeTaskDetailDate) {
+      refreshTaskDayDetailModal();
+    }
+  }
+
+  function getTaskDate(t) {
+    const iso = t.end_date || t.due_date || t.start_date || t.created_at;
+    if (!iso) return localDateStr(today);
+    return iso.split('T')[0];
+  }
+
+  function renderTaskCalendar() {
+    const gridEl = document.getElementById('task-calendar-grid');
+    const titleEl = document.getElementById('task-cal-month-title');
+    const pendingCountEl = document.getElementById('task-cal-pending-count');
+    if (!gridEl) return;
+
+    const year = taskCalCurrentDate.getFullYear();
+    const month = taskCalCurrentDate.getMonth();
+    const pad = n => String(n).padStart(2, '0');
+    const monthStr = `${year}-${pad(month + 1)}`;
+
+    if (titleEl) {
+      titleEl.textContent = taskCalCurrentDate.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+    }
+
+    const filtered = getFilteredTasks();
+    const monthPending = filtered.filter(t => !t.done && getTaskDate(t).startsWith(monthStr)).length;
+    if (pendingCountEl) {
+      pendingCountEl.textContent = monthPending;
+    }
+
+    const tasksByDate = {};
+    filtered.forEach(t => {
+      const dateStr = getTaskDate(t);
+      if (!tasksByDate[dateStr]) tasksByDate[dateStr] = [];
+      tasksByDate[dateStr].push(t);
+    });
+
+    const firstDay = new Date(year, month, 1);
+    const startDayIdx = firstDay.getDay();
+    const lastDate = new Date(year, month + 1, 0).getDate();
+    const prevMonthLastDate = new Date(year, month, 0).getDate();
+
+    const todayStr = localDateStr(today);
+    let cellsHtml = '';
+
+    // Previous month padding days
+    for (let i = startDayIdx - 1; i >= 0; i--) {
+      const dayNum = prevMonthLastDate - i;
+      const prevM = month === 0 ? 12 : month;
+      const prevY = month === 0 ? year - 1 : year;
+      const dateStr = `${prevY}-${pad(prevM)}-${pad(dayNum)}`;
+      const dayTasks = tasksByDate[dateStr] || [];
+
+      cellsHtml += buildTaskCalendarDayCellHtml({
+        dayNum, dateStr, isOtherMonth: true, isToday: dateStr === todayStr, items: dayTasks
+      });
+    }
+
+    // Current month days
+    for (let d = 1; d <= lastDate; d++) {
+      const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
+      const dayTasks = tasksByDate[dateStr] || [];
+
+      cellsHtml += buildTaskCalendarDayCellHtml({
+        dayNum: d, dateStr, isOtherMonth: false, isToday: dateStr === todayStr, items: dayTasks
+      });
+    }
+
+    // Next month padding days
+    const totalRendered = startDayIdx + lastDate;
+    const nextMonthPadding = (7 - (totalRendered % 7)) % 7;
+    for (let n = 1; n <= nextMonthPadding; n++) {
+      const nextM = month === 11 ? 1 : month + 2;
+      const nextY = month === 11 ? year + 1 : year;
+      const dateStr = `${nextY}-${pad(nextM)}-${pad(n)}`;
+      const dayTasks = tasksByDate[dateStr] || [];
+
+      cellsHtml += buildTaskCalendarDayCellHtml({
+        dayNum: n, dateStr, isOtherMonth: true, isToday: dateStr === todayStr, items: dayTasks
+      });
+    }
+
+    gridEl.innerHTML = cellsHtml;
+  }
+
+  function buildTaskCalendarDayCellHtml({ dayNum, dateStr, isOtherMonth, isToday, items }) {
+    const hasTasks = items.length > 0;
+    const pendingItems = items.filter(t => !t.done);
+    const itemsToShow = items.slice(0, 2);
+    const extraCount = items.length - 2;
+
+    const chipsHtml = itemsToShow.map(t => `
+      <div class="cal-item-chip cal-task-chip${t.done ? ' done' : ''}" title="${esc(t.title)} (${t.priority} priority)">
+        <span class="cal-task-priority-dot p-${t.priority}"></span>
+        <span class="cal-item-desc">${esc(t.title)}</span>
+      </div>
+    `).join('');
+
+    const moreHtml = extraCount > 0 ? `<div class="cal-more-chip">+${extraCount} more</div>` : '';
+
+    return `
+      <div class="cal-day-cell${isOtherMonth ? ' other-month' : ''}${isToday ? ' is-today' : ''}${hasTasks ? ' has-expenses' : ''}" data-date="${dateStr}">
+        <div class="cal-day-header">
+          <span class="cal-day-num">${dayNum}</span>
+          ${pendingItems.length > 0 ? `<span class="cal-day-total" style="color:var(--violet)">${pendingItems.length} due</span>` : ''}
+        </div>
+        <div class="cal-day-items">
+          ${chipsHtml}
+          ${moreHtml}
+        </div>
+        <button class="cal-day-add-btn" data-action="cal-add-task" data-date="${dateStr}" title="Add task for this date" style="background:var(--violet); color:#fff;">
+          <i class="ti ti-plus"></i>
+        </button>
+      </div>
+    `;
+  }
+
+  function renderTaskList() {
+    const sort = document.getElementById('sort-select').value;
+    const PORDER = { high: 0, medium: 1, low: 2 };
+    let list = getFilteredTasks();
 
     if (sort === 'priority') list.sort((a, b) => PORDER[a.priority] - PORDER[b.priority]);
     else if (sort === 'due') list.sort((a, b) => {
@@ -329,6 +471,7 @@ const UI = (() => {
     else list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     const el = document.getElementById('task-list');
+    if (!el) return;
     if (!list.length) {
       el.innerHTML = `<div class="empty-msg"><i class="ti ti-mood-smile"></i>Nothing here</div>`;
       return;
@@ -352,6 +495,61 @@ const UI = (() => {
         </div>
         ${t.notes ? `<div class="task-notes">${esc(t.notes)}</div>` : ''}
       </div>`).join('');
+  }
+
+  function openTaskDayDetailModal(dateStr) {
+    activeTaskDetailDate = dateStr;
+    refreshTaskDayDetailModal();
+    const modal = document.getElementById('task-day-detail-modal');
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function closeTaskDayDetailModal() {
+    activeTaskDetailDate = null;
+    const modal = document.getElementById('task-day-detail-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function refreshTaskDayDetailModal() {
+    if (!activeTaskDetailDate) return;
+    const dateObj = new Date(activeTaskDetailDate + 'T00:00:00');
+    const formattedDate = dateObj.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const dayTasks = getFilteredTasks().filter(t => getTaskDate(t) === activeTaskDetailDate);
+    const pendingCount = dayTasks.filter(t => !t.done).length;
+
+    const titleEl = document.getElementById('task-day-detail-date-label');
+    const summaryEl = document.getElementById('task-day-detail-summary');
+    const listEl = document.getElementById('task-day-detail-items-list');
+
+    if (titleEl) titleEl.textContent = formattedDate;
+    if (summaryEl) summaryEl.textContent = `${dayTasks.length} task(s) · ${pendingCount} remaining`;
+
+    if (listEl) {
+      if (!dayTasks.length) {
+        listEl.innerHTML = `<div class="empty-msg" style="padding:24px 0;"><i class="ti ti-mood-smile"></i>No tasks scheduled for this date.</div>`;
+      } else {
+        listEl.innerHTML = dayTasks.map(t => `
+          <div class="task-card${t.done ? ' done' : ''}" data-id="${t.id}">
+            <div class="task-top">
+              <button class="check-btn${t.done ? ' checked' : ''}" data-action="toggle" data-id="${t.id}">
+                ${t.done ? '<i class="ti ti-check"></i>' : ''}
+              </button>
+              <span class="task-title${t.done ? ' done-text' : ''}">${esc(t.title)}</span>
+              <div class="task-actions">
+                <button class="icon-btn" data-action="edit-task" data-id="${t.id}"><i class="ti ti-pencil"></i></button>
+                <button class="icon-btn del" data-action="delete-task" data-id="${t.id}"><i class="ti ti-trash"></i></button>
+              </div>
+            </div>
+            <div class="task-meta">
+              <span class="priority-badge p-${t.priority}">${t.priority}</span>
+              ${startChip(t)}
+              ${dueChip(t)}
+            </div>
+            ${t.notes ? `<div class="task-notes">${esc(t.notes)}</div>` : ''}
+          </div>
+        `).join('');
+      }
+    }
   }
 
   function startChip(t) {
@@ -408,8 +606,12 @@ const UI = (() => {
     const sel = document.getElementById('expense-month-filter');
     const selectedMonth = sel.value;
 
-    let list = getFilteredExpenses().filter(e => e.date?.startsWith(selectedMonth));
-    list.sort((a, b) => b.date.localeCompare(a.date));
+    if (selectedMonth && selectedMonth.includes('-')) {
+      const [y, m] = selectedMonth.split('-').map(Number);
+      if (calCurrentDate.getFullYear() !== y || calCurrentDate.getMonth() !== (m - 1)) {
+        calCurrentDate = new Date(y, m - 1, 1);
+      }
+    }
 
     const allMonthExpenses = expenses.filter(e => e.date?.startsWith(selectedMonth));
     const todayStr = localDateStr(today);
@@ -456,7 +658,143 @@ const UI = (() => {
       catBreak.innerHTML = '';
     }
 
+    const calViewEl = document.getElementById('expense-calendar-view');
+    const listViewEl = document.getElementById('expense-list');
+    document.querySelectorAll('#expense-view-mode-tabs .view-toggle-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.mode === expenseViewMode);
+    });
+
+    if (expenseViewMode === 'calendar') {
+      if (calViewEl) calViewEl.style.display = 'block';
+      if (listViewEl) listViewEl.style.display = 'none';
+      renderExpenseCalendar();
+    } else {
+      if (calViewEl) calViewEl.style.display = 'none';
+      if (listViewEl) listViewEl.style.display = 'block';
+      renderExpenseList(selectedMonth);
+    }
+
+    if (activeDetailDate) {
+      refreshDayDetailModal();
+    }
+  }
+
+  function renderExpenseCalendar() {
+    const gridEl = document.getElementById('expense-calendar-grid');
+    const titleEl = document.getElementById('cal-month-title');
+    const monthTotalEl = document.getElementById('cal-month-total');
+    if (!gridEl) return;
+
+    const year = calCurrentDate.getFullYear();
+    const month = calCurrentDate.getMonth();
+    const pad = n => String(n).padStart(2, '0');
+    const monthStr = `${year}-${pad(month + 1)}`;
+
+    if (titleEl) {
+      titleEl.textContent = calCurrentDate.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+    }
+
+    const monthExpenses = getFilteredExpenses().filter(e => e.date?.startsWith(monthStr));
+    const totalMonthSpend = monthExpenses.reduce((s, e) => s + Number(e.amount), 0);
+    if (monthTotalEl) {
+      monthTotalEl.textContent = peso(totalMonthSpend);
+    }
+
+    const expByDate = {};
+    expenses.forEach(e => {
+      if (!expByDate[e.date]) expByDate[e.date] = [];
+      expByDate[e.date].push(e);
+    });
+
+    const firstDay = new Date(year, month, 1);
+    const startDayIdx = firstDay.getDay();
+    const lastDate = new Date(year, month + 1, 0).getDate();
+    const prevMonthLastDate = new Date(year, month, 0).getDate();
+
+    const todayStr = localDateStr(today);
+    let cellsHtml = '';
+
+    // Previous month padding days
+    for (let i = startDayIdx - 1; i >= 0; i--) {
+      const dayNum = prevMonthLastDate - i;
+      const prevM = month === 0 ? 12 : month;
+      const prevY = month === 0 ? year - 1 : year;
+      const dateStr = `${prevY}-${pad(prevM)}-${pad(dayNum)}`;
+      const dayExp = expByDate[dateStr] || [];
+      const dayTotal = dayExp.reduce((s, e) => s + Number(e.amount), 0);
+
+      cellsHtml += buildCalendarDayCellHtml({
+        dayNum, dateStr, isOtherMonth: true, isToday: dateStr === todayStr, items: dayExp, total: dayTotal
+      });
+    }
+
+    // Current month days
+    for (let d = 1; d <= lastDate; d++) {
+      const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
+      const dayExp = expByDate[dateStr] || [];
+      const dayTotal = dayExp.reduce((s, e) => s + Number(e.amount), 0);
+
+      cellsHtml += buildCalendarDayCellHtml({
+        dayNum: d, dateStr, isOtherMonth: false, isToday: dateStr === todayStr, items: dayExp, total: dayTotal
+      });
+    }
+
+    // Next month padding days to complete grid
+    const totalRendered = startDayIdx + lastDate;
+    const nextMonthPadding = (7 - (totalRendered % 7)) % 7;
+    for (let n = 1; n <= nextMonthPadding; n++) {
+      const nextM = month === 11 ? 1 : month + 2;
+      const nextY = month === 11 ? year + 1 : year;
+      const dateStr = `${nextY}-${pad(nextM)}-${pad(n)}`;
+      const dayExp = expByDate[dateStr] || [];
+      const dayTotal = dayExp.reduce((s, e) => s + Number(e.amount), 0);
+
+      cellsHtml += buildCalendarDayCellHtml({
+        dayNum: n, dateStr, isOtherMonth: true, isToday: dateStr === todayStr, items: dayExp, total: dayTotal
+      });
+    }
+
+    gridEl.innerHTML = cellsHtml;
+  }
+
+  function buildCalendarDayCellHtml({ dayNum, dateStr, isOtherMonth, isToday, items, total }) {
+    const hasExpenses = items.length > 0;
+    const itemsToShow = items.slice(0, 2);
+    const extraCount = items.length - 2;
+
+    const chipsHtml = itemsToShow.map(e => `
+      <div class="cal-item-chip" title="${esc(e.description)} (${CAT_LABELS[e.category] || e.category}): ${peso(e.amount)}">
+        <i class="ti ${catIcon(e.category)}"></i>
+        <span class="cal-item-desc">${esc(e.description)}</span>
+        <span class="cal-item-amt">${peso(e.amount)}</span>
+      </div>
+    `).join('');
+
+    const moreHtml = extraCount > 0 ? `<div class="cal-more-chip">+${extraCount} more</div>` : '';
+
+    return `
+      <div class="cal-day-cell${isOtherMonth ? ' other-month' : ''}${isToday ? ' is-today' : ''}${hasExpenses ? ' has-expenses' : ''}" data-date="${dateStr}">
+        <div class="cal-day-header">
+          <span class="cal-day-num">${dayNum}</span>
+          ${total > 0 ? `<span class="cal-day-total">${peso(total)}</span>` : ''}
+        </div>
+        <div class="cal-day-items">
+          ${chipsHtml}
+          ${moreHtml}
+        </div>
+        <button class="cal-day-add-btn" data-action="cal-add-expense" data-date="${dateStr}" title="Add expense for this date">
+          <i class="ti ti-plus"></i>
+        </button>
+      </div>
+    `;
+  }
+
+  function renderExpenseList(selectedMonth) {
+    let list = getFilteredExpenses().filter(e => e.date?.startsWith(selectedMonth));
+    list.sort((a, b) => b.date.localeCompare(a.date));
+
     const el = document.getElementById('expense-list');
+    if (!el) return;
     if (!list.length) {
       el.innerHTML = `<div class="empty-msg"><i class="ti ti-receipt-off"></i>No expenses here</div>`;
       return;
@@ -498,6 +836,57 @@ const UI = (() => {
             </div>`).join('')}
         </div>`;
     }).join('');
+  }
+
+  function openDayDetailModal(dateStr) {
+    activeDetailDate = dateStr;
+    refreshDayDetailModal();
+    const modal = document.getElementById('day-detail-modal');
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function closeDayDetailModal() {
+    activeDetailDate = null;
+    const modal = document.getElementById('day-detail-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function refreshDayDetailModal() {
+    if (!activeDetailDate) return;
+    const dateObj = new Date(activeDetailDate + 'T00:00:00');
+    const formattedDate = dateObj.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const dayItems = expenses.filter(e => e.date === activeDetailDate);
+    const dayTotal = dayItems.reduce((s, e) => s + Number(e.amount), 0);
+
+    const titleEl = document.getElementById('day-detail-date-label');
+    const totalEl = document.getElementById('day-detail-total-spend');
+    const listEl = document.getElementById('day-detail-items-list');
+
+    if (titleEl) titleEl.textContent = formattedDate;
+    if (totalEl) totalEl.textContent = `Total Spend: ${peso(dayTotal)}`;
+
+    if (listEl) {
+      if (!dayItems.length) {
+        listEl.innerHTML = `<div class="empty-msg" style="padding:24px 0;"><i class="ti ti-receipt-off"></i>No expenses recorded for this date.</div>`;
+      } else {
+        listEl.innerHTML = dayItems.map(e => `
+          <div class="expense-card" data-id="${e.id}">
+            <div class="expense-cat-icon cat-icon-${e.category}"><i class="ti ${catIcon(e.category)}"></i></div>
+            <div class="expense-info">
+              <div class="expense-desc">${esc(e.description)}</div>
+              <div class="expense-meta">${CAT_LABELS[e.category] || e.category} · ${PAY_LABELS[e.payment] || e.payment}${e.notes ? ' · ' + esc(e.notes) : ''}</div>
+            </div>
+            <div class="expense-right">
+              <div class="expense-amount">${peso(e.amount)}</div>
+              <div class="expense-actions">
+                <button class="icon-btn" data-action="edit-expense" data-id="${e.id}"><i class="ti ti-pencil"></i></button>
+                <button class="icon-btn del" data-action="delete-expense" data-id="${e.id}"><i class="ti ti-trash"></i></button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
   }
 
   // ---- Preset & Budget Rendering ----
@@ -906,7 +1295,7 @@ const UI = (() => {
 
   // ---- Task Modal ----
 
-  function openTaskModal(id = null) {
+  function openTaskModal(id = null, presetDate = null) {
     editTaskId = id;
     document.getElementById('modal-title').textContent = id ? 'Edit task' : 'New task';
     if (id) {
@@ -920,8 +1309,8 @@ const UI = (() => {
       document.getElementById('m-title').value = '';
       document.getElementById('m-notes').value = '';
       document.getElementById('m-priority').value = 'medium';
-      document.getElementById('m-start').value = '';
-      document.getElementById('m-end').value = '';
+      document.getElementById('m-start').value = presetDate ? `${presetDate}T09:00` : '';
+      document.getElementById('m-end').value = presetDate ? `${presetDate}T17:00` : '';
     }
     document.getElementById('modal').style.display = 'flex';
     setTimeout(() => document.getElementById('m-title').focus(), 50);
@@ -1097,6 +1486,108 @@ const UI = (() => {
       });
     }
 
+    // Task View Toggle Tabs
+    const taskViewTabsEl = document.getElementById('task-view-mode-tabs');
+    if (taskViewTabsEl) {
+      taskViewTabsEl.addEventListener('click', e => {
+        const tab = e.target.closest('.view-toggle-tab');
+        if (!tab) return;
+        taskViewMode = tab.dataset.mode;
+        renderTasks();
+      });
+    }
+
+    // Task Calendar Navigation Controls
+    const taskCalPrevBtn = document.getElementById('task-cal-btn-prev');
+    if (taskCalPrevBtn) {
+      taskCalPrevBtn.addEventListener('click', () => {
+        taskCalCurrentDate = new Date(taskCalCurrentDate.getFullYear(), taskCalCurrentDate.getMonth() - 1, 1);
+        renderTasks();
+      });
+    }
+
+    const taskCalNextBtn = document.getElementById('task-cal-btn-next');
+    if (taskCalNextBtn) {
+      taskCalNextBtn.addEventListener('click', () => {
+        taskCalCurrentDate = new Date(taskCalCurrentDate.getFullYear(), taskCalCurrentDate.getMonth() + 1, 1);
+        renderTasks();
+      });
+    }
+
+    const taskCalTodayBtn = document.getElementById('task-cal-btn-today');
+    if (taskCalTodayBtn) {
+      taskCalTodayBtn.addEventListener('click', () => {
+        taskCalCurrentDate = new Date(today);
+        renderTasks();
+      });
+    }
+
+    // Task Calendar Grid Delegation
+    const taskCalGridEl = document.getElementById('task-calendar-grid');
+    if (taskCalGridEl) {
+      taskCalGridEl.addEventListener('click', e => {
+        const addBtn = e.target.closest('[data-action="cal-add-task"]');
+        if (addBtn) {
+          e.stopPropagation();
+          openTaskModal(null, addBtn.dataset.date);
+          return;
+        }
+        const cell = e.target.closest('.cal-day-cell');
+        if (cell && cell.dataset.date) {
+          openTaskDayDetailModal(cell.dataset.date);
+        }
+      });
+    }
+
+    // Task Day Detail Modal
+    const taskDayDetailCloseBtn = document.getElementById('task-day-detail-btn-close');
+    if (taskDayDetailCloseBtn) taskDayDetailCloseBtn.addEventListener('click', closeTaskDayDetailModal);
+
+    const taskDayDetailModal = document.getElementById('task-day-detail-modal');
+    if (taskDayDetailModal) {
+      taskDayDetailModal.addEventListener('click', e => {
+        if (e.target === e.currentTarget) closeTaskDayDetailModal();
+      });
+    }
+
+    const taskDayDetailAddBtn = document.getElementById('task-day-detail-btn-add');
+    if (taskDayDetailAddBtn) {
+      taskDayDetailAddBtn.addEventListener('click', () => {
+        if (activeTaskDetailDate) {
+          openTaskModal(null, activeTaskDetailDate);
+        }
+      });
+    }
+
+    const taskDayDetailList = document.getElementById('task-day-detail-items-list');
+    if (taskDayDetailList) {
+      taskDayDetailList.addEventListener('click', async e => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const { action, id } = btn.dataset;
+        if (action === 'toggle') {
+          const t = tasks.find(t => t.id === id);
+          try {
+            const updated = await Tasks.toggleDone(id, t.done);
+            tasks = tasks.map(t => t.id === id ? updated : t);
+            renderTasks();
+            renderDashboard();
+          } catch (err) { showToast('Error: ' + err.message, true); }
+        }
+        if (action === 'edit-task') openTaskModal(id);
+        if (action === 'delete-task') {
+          if (!confirm('Delete this task?')) return;
+          try {
+            await Tasks.remove(id);
+            tasks = tasks.filter(t => t.id !== id);
+            renderTasks();
+            renderDashboard();
+            showToast('Task deleted');
+          } catch (err) { showToast('Error: ' + err.message, true); }
+        }
+      });
+    }
+
     // Dashboard refresh - only bind if element exists
     const refreshBtn = document.getElementById('btn-refresh-dash');
     if (refreshBtn) {
@@ -1178,7 +1669,117 @@ const UI = (() => {
     document.getElementById('bu-btn-cancel').addEventListener('click', closeBudgetModal);
     document.getElementById('budget-modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeBudgetModal(); });
 
-    document.getElementById('expense-month-filter').addEventListener('change', renderExpenses);
+    document.getElementById('expense-month-filter').addEventListener('change', (e) => {
+      if (e.target.value && e.target.value.includes('-')) {
+        const [y, m] = e.target.value.split('-').map(Number);
+        calCurrentDate = new Date(y, m - 1, 1);
+      }
+      renderExpenses();
+    });
+
+    // Expense View Toggle Tabs
+    const viewTabsEl = document.getElementById('expense-view-mode-tabs');
+    if (viewTabsEl) {
+      viewTabsEl.addEventListener('click', e => {
+        const tab = e.target.closest('.view-toggle-tab');
+        if (!tab) return;
+        expenseViewMode = tab.dataset.mode;
+        renderExpenses();
+      });
+    }
+
+    // Calendar Navigation Controls
+    const calPrevBtn = document.getElementById('cal-btn-prev');
+    if (calPrevBtn) {
+      calPrevBtn.addEventListener('click', () => {
+        calCurrentDate = new Date(calCurrentDate.getFullYear(), calCurrentDate.getMonth() - 1, 1);
+        const pad = n => String(n).padStart(2, '0');
+        const sel = document.getElementById('expense-month-filter');
+        if (sel) sel.value = `${calCurrentDate.getFullYear()}-${pad(calCurrentDate.getMonth() + 1)}`;
+        renderExpenses();
+      });
+    }
+
+    const calNextBtn = document.getElementById('cal-btn-next');
+    if (calNextBtn) {
+      calNextBtn.addEventListener('click', () => {
+        calCurrentDate = new Date(calCurrentDate.getFullYear(), calCurrentDate.getMonth() + 1, 1);
+        const pad = n => String(n).padStart(2, '0');
+        const sel = document.getElementById('expense-month-filter');
+        if (sel) sel.value = `${calCurrentDate.getFullYear()}-${pad(calCurrentDate.getMonth() + 1)}`;
+        renderExpenses();
+      });
+    }
+
+    const calTodayBtn = document.getElementById('cal-btn-today');
+    if (calTodayBtn) {
+      calTodayBtn.addEventListener('click', () => {
+        calCurrentDate = new Date(today);
+        const pad = n => String(n).padStart(2, '0');
+        const sel = document.getElementById('expense-month-filter');
+        if (sel) sel.value = `${calCurrentDate.getFullYear()}-${pad(calCurrentDate.getMonth() + 1)}`;
+        renderExpenses();
+      });
+    }
+
+    // Calendar Grid Delegation
+    const calGridEl = document.getElementById('expense-calendar-grid');
+    if (calGridEl) {
+      calGridEl.addEventListener('click', e => {
+        const addBtn = e.target.closest('[data-action="cal-add-expense"]');
+        if (addBtn) {
+          e.stopPropagation();
+          openExpenseModal(null, addBtn.dataset.date);
+          return;
+        }
+        const cell = e.target.closest('.cal-day-cell');
+        if (cell && cell.dataset.date) {
+          openDayDetailModal(cell.dataset.date);
+        }
+      });
+    }
+
+    // Day Detail Modal
+    const dayDetailCloseBtn = document.getElementById('day-detail-btn-close');
+    if (dayDetailCloseBtn) dayDetailCloseBtn.addEventListener('click', closeDayDetailModal);
+
+    const dayDetailModal = document.getElementById('day-detail-modal');
+    if (dayDetailModal) {
+      dayDetailModal.addEventListener('click', e => {
+        if (e.target === e.currentTarget) closeDayDetailModal();
+      });
+    }
+
+    const dayDetailAddBtn = document.getElementById('day-detail-btn-add');
+    if (dayDetailAddBtn) {
+      dayDetailAddBtn.addEventListener('click', () => {
+        if (activeDetailDate) {
+          openExpenseModal(null, activeDetailDate);
+        }
+      });
+    }
+
+    const dayDetailList = document.getElementById('day-detail-items-list');
+    if (dayDetailList) {
+      dayDetailList.addEventListener('click', async e => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const { action, id } = btn.dataset;
+        if (action === 'edit-expense') openExpenseModal(id);
+        if (action === 'delete-expense') {
+          if (!confirm('Delete this expense?')) return;
+          try {
+            await Expenses.remove(id);
+            expenses = expenses.filter(ex => ex.id !== id);
+            try { budgets = await Budget.getAll(); } catch (err) { }
+            renderExpenses();
+            renderBudget();
+            renderDashboard();
+            showToast('Expense deleted');
+          } catch (err) { showToast('Error: ' + err.message, true); }
+        }
+      });
+    }
 
     document.getElementById('preset-chips').addEventListener('click', e => {
       const chip = e.target.closest('[data-action]');
@@ -1254,6 +1855,8 @@ const UI = (() => {
         closeExpenseModal();
         closePresetModal();
         closeBudgetModal();
+        closeDayDetailModal();
+        closeTaskDayDetailModal();
       }
     });
 

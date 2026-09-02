@@ -139,19 +139,53 @@
         <div id="view-tasks">
           <div class="glass-panel tasks-panel">
             <div class="tasks-panel-header">
-              <div class="task-filter-tabs" id="task-filter-tabs">
-                <button class="task-filter-tab active" data-filter="pending">Remaining</button>
-                <button class="task-filter-tab" data-filter="done">Finished</button>
-                <button class="task-filter-tab" data-filter="all">All</button>
+              <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+                <div class="task-filter-tabs" id="task-filter-tabs">
+                  <button class="task-filter-tab active" data-filter="pending">Remaining</button>
+                  <button class="task-filter-tab" data-filter="done">Finished</button>
+                  <button class="task-filter-tab" data-filter="all">All</button>
+                </div>
+                <div class="view-toggle-tabs" id="task-view-mode-tabs">
+                  <button class="view-toggle-tab active" data-mode="calendar"><i class="ti ti-calendar"></i> Calendar</button>
+                  <button class="view-toggle-tab" data-mode="list"><i class="ti ti-list"></i> List</button>
+                </div>
               </div>
-              <select class="sort-select" id="sort-select">
-                <option value="due">Sort: due date</option>
-                <option value="priority">Sort: priority</option>
-                <option value="created">Sort: created</option>
-              </select>
-              <button class="pill-btn primary" id="btn-add-task-inline"><i class="ti ti-plus"></i> New Task</button>
+              <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <select class="sort-select" id="sort-select">
+                  <option value="due">Sort: due date</option>
+                  <option value="priority">Sort: priority</option>
+                  <option value="created">Sort: created</option>
+                </select>
+                <button class="pill-btn primary" id="btn-add-task-inline"><i class="ti ti-plus"></i> New Task</button>
+              </div>
             </div>
-            <div id="task-list"></div>
+
+            <!-- Task Calendar View -->
+            <div id="task-calendar-view" style="margin-top:16px;">
+              <div class="calendar-nav-bar">
+                <div class="calendar-nav-left">
+                  <button class="icon-btn" id="task-cal-btn-prev" title="Previous Month"><i class="ti ti-chevron-left"></i></button>
+                  <h3 id="task-cal-month-title">Month Year</h3>
+                  <button class="icon-btn" id="task-cal-btn-next" title="Next Month"><i class="ti ti-chevron-right"></i></button>
+                  <button class="top-btn small" id="task-cal-btn-today">Today</button>
+                </div>
+                <div class="calendar-nav-right">
+                  <span class="cal-month-total-label">Pending:</span>
+                  <span class="cal-month-total-val" id="task-cal-pending-count" style="color:var(--violet)">0</span>
+                </div>
+              </div>
+
+              <div class="calendar-grid-header">
+                <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+              </div>
+
+              <div id="task-calendar-grid" class="calendar-grid">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+
+            <!-- Task List View -->
+            <div id="task-list" style="display:none"></div>
           </div>
         </div>
 
@@ -204,7 +238,13 @@
 
           <!-- Expense list header -->
           <div id="expense-header" style="margin-top:24px">
-            <h2 id="expense-view-title">All expenses</h2>
+            <div style="display:flex; align-items:center; gap:16px;">
+              <h2 id="expense-view-title">Expenses Log</h2>
+              <div class="view-toggle-tabs" id="expense-view-mode-tabs">
+                <button class="view-toggle-tab active" data-mode="calendar"><i class="ti ti-calendar"></i> Calendar</button>
+                <button class="view-toggle-tab" data-mode="list"><i class="ti ti-list-check"></i> List</button>
+              </div>
+            </div>
             <div class="expense-header-right">
               <button class="pill-btn cyan" id="btn-add-expense-inline"><i class="ti ti-plus"></i> Add expense</button>
               <select class="sort-select" id="expense-month-filter">
@@ -219,8 +259,32 @@
             <button class="preset-manage-btn" id="btn-manage-presets"><i class="ti ti-adjustments-horizontal"></i> Manage</button>
           </div>
 
-          <!-- Expense list -->
-          <div id="expense-list"></div>
+          <!-- Calendar View -->
+          <div id="expense-calendar-view" class="glass-panel" style="padding: 20px;">
+            <div class="calendar-nav-bar">
+              <div class="calendar-nav-left">
+                <button class="icon-btn" id="cal-btn-prev" title="Previous Month"><i class="ti ti-chevron-left"></i></button>
+                <h3 id="cal-month-title">Month Year</h3>
+                <button class="icon-btn" id="cal-btn-next" title="Next Month"><i class="ti ti-chevron-right"></i></button>
+                <button class="top-btn small" id="cal-btn-today">Today</button>
+              </div>
+              <div class="calendar-nav-right">
+                <span class="cal-month-total-label">Month Total:</span>
+                <span class="cal-month-total-val" id="cal-month-total">₱0.00</span>
+              </div>
+            </div>
+
+            <div class="calendar-grid-header">
+              <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+            </div>
+
+            <div id="expense-calendar-grid" class="calendar-grid">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+          <!-- Expense list (List View) -->
+          <div id="expense-list" style="display:none"></div>
         </div>
 
         <!-- BUDGET VIEW -->
@@ -466,6 +530,44 @@
         <div class="modal-btns">
           <button class="btn-cancel" id="pr-btn-cancel">Close</button>
           <button class="btn-save" id="pr-btn-save">Add preset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DAY DETAIL MODAL (EXPENSES) -->
+    <div id="day-detail-modal" style="display:none" class="modal-overlay">
+      <div class="modal day-detail-modal-card">
+        <div class="day-detail-header">
+          <div>
+            <h4 id="day-detail-date-label">August 19, 2026</h4>
+            <span id="day-detail-total-spend" class="day-detail-total">Total: ₱0.00</span>
+          </div>
+          <button class="icon-btn" id="day-detail-btn-close"><i class="ti ti-x"></i></button>
+        </div>
+        <div id="day-detail-items-list" class="day-detail-list">
+          <!-- Filled by JS -->
+        </div>
+        <div class="modal-btns" style="margin-top:18px">
+          <button class="pill-btn cyan" id="day-detail-btn-add" style="width:100%; justify-content:center;"><i class="ti ti-plus"></i> Add expense on this day</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TASK DAY DETAIL MODAL -->
+    <div id="task-day-detail-modal" style="display:none" class="modal-overlay">
+      <div class="modal day-detail-modal-card">
+        <div class="day-detail-header">
+          <div>
+            <h4 id="task-day-detail-date-label">August 19, 2026</h4>
+            <span id="task-day-detail-summary" class="day-detail-total" style="color:var(--violet)">0 tasks</span>
+          </div>
+          <button class="icon-btn" id="task-day-detail-btn-close"><i class="ti ti-x"></i></button>
+        </div>
+        <div id="task-day-detail-items-list" class="day-detail-list">
+          <!-- Filled by JS -->
+        </div>
+        <div class="modal-btns" style="margin-top:18px">
+          <button class="pill-btn primary" id="task-day-detail-btn-add" style="width:100%; justify-content:center;"><i class="ti ti-plus"></i> Add task for this day</button>
         </div>
       </div>
     </div>
